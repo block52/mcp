@@ -11,7 +11,9 @@ import (
 	"os"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 
+	agentv1 "github.com/block52/mcp/core/gen/agent/v1"
 	"github.com/block52/mcp/core/internal/chain"
 	"github.com/block52/mcp/core/internal/server"
 )
@@ -37,7 +39,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("chain client: %v", err)
 	}
-	_ = server.New(cl) // TODO(phase1): RegisterAgentServiceServer once stubs exist
+	srv := server.New(cl)
 
 	addr := env("LISTEN", ":50051")
 	lis, err := net.Listen("tcp", addr)
@@ -46,7 +48,8 @@ func main() {
 	}
 
 	gs := grpc.NewServer()
-	// TODO(phase1): agentv1.RegisterAgentServiceServer(gs, srv)
+	agentv1.RegisterAgentServiceServer(gs, srv)
+	reflection.Register(gs) // lets grpcurl / clients introspect the service
 
 	log.Printf("agentd listening on %s (chain=%s rest=%s)", addr, cfg.ChainID, cfg.RestEndpoint)
 	if err := gs.Serve(lis); err != nil {

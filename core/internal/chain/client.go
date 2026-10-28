@@ -8,15 +8,23 @@
 //	poker-vm/bot/go/cosmos.go        — MsgPerformAction/MsgJoinGame structs,
 //	                                    EncodeMsgPerformAction, encodeAny, signDoc
 //	poker-vm/bot/go/derive_addr.go   — bech32 prefix "b52" / "b52pub"
-//	poker-vm/bot/go/chaindirect.go   — REST: /block52/pokerchain/poker/v1/...
+//	poker-vm/bot/go/chaindirect.go   — REST + the doubly-encoded game_state JSON
 //
-// Chain facts (verified from the bot):
+// Chain facts (verified from the bot + SDK):
 //
 //	chainID default "pokerchain", Cosmos SDK v0.50.2, secp256k1, denom "usdc" (6dp).
-//	Public spectator read exists on-chain: GET .../poker/v1/game_state_public/{id}
+//	game_state_public/{id} and list_games both wrap their JSON payload in a string
+//	field that must be unmarshalled a SECOND time.
 package chain
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+)
 
 // Config holds endpoints and the agent's signing identity.
 type Config struct {
@@ -31,38 +39,171 @@ type Config struct {
 }
 
 // Client is the chain-facing surface the gRPC server depends on.
-// TODO(phase1): implement reads. TODO(phase2): implement signed writes.
+// Reads are implemented (Phase 1). Writes are stubbed (Phase 2).
 type Client struct {
 	cfg  Config
+	http *http.Client
 	addr string // derived b52... address
 }
 
 // New constructs a Client and derives the agent's address from its key.
 func New(cfg Config) (*Client, error) {
+	c := &Client{
+		cfg:  cfg,
+		http: &http.Client{Timeout: 10 * time.Second},
+	}
 	// TODO(phase2): derive address via bech32 "b52" prefix (see bot/go/derive_addr.go).
-	return &Client{cfg: cfg}, nil
+	// Until then Address() is empty; GetMyView accepts an explicit address.
+	return c, nil
 }
 
-// Address returns the agent's b52 address.
+// Address returns the agent's b52 address (empty until Phase 2 key derivation).
 func (c *Client) Address() string { return c.addr }
+
+// --- Wire DTOs (match the chain's game_state JSON; see bot/go/chaindirect.go) ---
+
+// LegalAction is embedded per-player in the state — no separate query needed.
+type LegalAction struct {
+	Action string `json:"action"`
+	Min    string `json:"min"`
+	Max    string `json:"max"`
+}
+
+// Player is one seat in the public state. Hole cards are absent in the public
+// view for opponents (that is exactly what makes it spectator-safe).
+type Player struct {
+	Seat         int           `json:"seat"`
+	Address      string        `json:"address"`
+	Status       string        `json:"status"`
+	Stack        string        `json:"stack"`
+	LegalActions []LegalAction `json:"legalActions"`
+}
+
+// GameState is the decoded inner game_state. actionCount stays 0 on-chain — key
+// progress off len(PreviousActions) instead (bot/go cdFull.progress()).
+type GameState struct {
+	HandNumber      int               `json:"handNumber"`
+	Round           string            `json:"round"`
+	NextToAct       int               `json:"nextToAct"` // SEAT number, not an address
+	ActionCount     int               `json:"actionCount"`
+	Players         []Player          `json:"players"`
+	PreviousActions []json.RawMessage `json:"previousActions"`
+	Results         []json.RawMessage `json:"results"`
+}
+
+// GameOptions mirrors the SDK GameOptionsDTO fields we surface for discovery.
+type GameOptions struct {
+	MinPlayers int    `json:"minPlayers"`
+	MaxPlayers int    `json:"maxPlayers"`
+	SmallBlind string `json:"smallBlind"`
+	BigBlind   string `json:"bigBlind"`
+}
+
+// GameListItem is one entry from list_games (SDK GameListItem).
+type GameListItem struct {
+	GameID         string      `json:"gameId"`
+	Creator        string      `json:"creator"`
+	Format         string      `json:"format"`
+	Variant        string      `json:"variant"`
+	Name           string      `json:"name,omitempty"`
+	GameOptions    GameOptions `json:"gameOptions"`
+	CurrentPlayers int         `json:"currentPlayers"`
+}
 
 // --- Reads (Phase 1) ---
 
-// GameStateJSON returns the raw chain game_state JSON for a table (caller's view,
-// includes own hole cards). GET /block52/pokerchain/poker/v1/game_state/{id}.
+// getJSON performs a GET and decodes the body into v.
+func (c *Client) getJSON(ctx context.Context, path string, v any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.RestEndpoint+path, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GET %s: status %d: %s", path, resp.StatusCode, string(body))
+	}
+	return json.Unmarshal(body, v)
+}
+
+// GameStateJSON returns the raw inner game_state JSON for a table (the public,
+// opponent-hidden view). The endpoint double-encodes: {"game_state":"<json>"}.
 func (c *Client) GameStateJSON(ctx context.Context, gameID string) (string, error) {
-	panic("TODO(phase1): REST GET game_state/{id}")
+	var outer struct {
+		GameState string `json:"game_state"`
+	}
+	if err := c.getJSON(ctx, "/block52/pokerchain/poker/v1/game_state_public/"+gameID, &outer); err != nil {
+		return "", err
+	}
+	if outer.GameState == "" {
+		return "", fmt.Errorf("game %s: empty game_state", gameID)
+	}
+	return outer.GameState, nil
 }
 
-// ListGames returns joinable tables. GET .../poker/v1/games (+ optional filters).
-func (c *Client) ListGames(ctx context.Context, minP, maxP uint64) ([]byte, error) {
-	panic("TODO(phase1): REST GET games")
+// GameState fetches and decodes the inner state in one step.
+func (c *Client) GameState(ctx context.Context, gameID string) (*GameState, error) {
+	raw, err := c.GameStateJSON(ctx, gameID)
+	if err != nil {
+		return nil, err
+	}
+	var gs GameState
+	if err := json.Unmarshal([]byte(raw), &gs); err != nil {
+		return nil, fmt.Errorf("decode game_state for %s: %w", gameID, err)
+	}
+	return &gs, nil
 }
 
-// LegalActions is a dedicated chain query (NOT derived from state).
-// GET .../poker/v1/legal_actions/{id}?player={addr}.
-func (c *Client) LegalActions(ctx context.Context, gameID, player string) ([]byte, error) {
-	panic("TODO(phase1): REST GET legal_actions/{id}")
+// ListGames returns all joinable tables. list_games double-encodes under "games".
+func (c *Client) ListGames(ctx context.Context) ([]GameListItem, error) {
+	var outer struct {
+		Games string `json:"games"`
+	}
+	if err := c.getJSON(ctx, "/block52/pokerchain/poker/v1/list_games", &outer); err != nil {
+		return nil, err
+	}
+	if outer.Games == "" || outer.Games == "null" {
+		return nil, nil
+	}
+	var games []GameListItem
+	if err := json.Unmarshal([]byte(outer.Games), &games); err != nil {
+		return nil, fmt.Errorf("decode list_games: %w", err)
+	}
+	return games, nil
+}
+
+// PlayerBySeat returns the player seated at seat, or nil.
+func (gs *GameState) PlayerBySeat(seat int) *Player {
+	for i := range gs.Players {
+		if gs.Players[i].Seat == seat {
+			return &gs.Players[i]
+		}
+	}
+	return nil
+}
+
+// PlayerByAddress returns the player with the given address, or nil.
+func (gs *GameState) PlayerByAddress(addr string) *Player {
+	for i := range gs.Players {
+		if gs.Players[i].Address == addr {
+			return &gs.Players[i]
+		}
+	}
+	return nil
+}
+
+// IsTurn reports whether the player at addr is next to act. NextToAct is a seat
+// number, so resolve the address to its seat and compare.
+func (gs *GameState) IsTurn(addr string) bool {
+	p := gs.PlayerByAddress(addr)
+	return p != nil && p.Seat == gs.NextToAct
 }
 
 // --- Writes (Phase 2): build + sign + broadcast Cosmos Msgs ---

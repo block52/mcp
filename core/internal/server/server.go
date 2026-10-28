@@ -1,26 +1,133 @@
 // Package server implements agent.v1.AgentService over the chain client.
 //
-// Until `buf generate` produces core/gen/agent/v1, the generated
-// AgentServiceServer interface and request/response types don't exist yet, so
-// this file intentionally does NOT implement the gRPC interface. It defines the
-// handler struct and the shape of each RPC so Phase 1/2 can fill the bodies and
-// wire it with RegisterAgentServiceServer.
+// Phase 1 implements the read path: ListTables, GetMyView, WaitForTurn.
+// The write path (Join/Act/Leave) returns Unimplemented until Phase 2.
 package server
 
-import "github.com/block52/mcp/core/internal/chain"
+import (
+	"context"
+	"time"
 
-// Server holds dependencies for the AgentService handlers.
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	agentv1 "github.com/block52/mcp/core/gen/agent/v1"
+	"github.com/block52/mcp/core/internal/chain"
+)
+
+// Server implements agentv1.AgentServiceServer.
 type Server struct {
-	Chain *chain.Client
+	agentv1.UnimplementedAgentServiceServer
+	chain *chain.Client
 }
 
-func New(c *chain.Client) *Server { return &Server{Chain: c} }
+func New(c *chain.Client) *Server { return &Server{chain: c} }
 
-// Handlers to implement once stubs are generated (Phase 1 reads, Phase 2 writes):
-//
-//	ListTables(ctx, *ListTablesRequest) (*ListTablesResponse, error)  // Chain.ListGames
-//	GetMyView(ctx, *GetMyViewRequest) (*GetMyViewResponse, error)     // GameStateJSON + LegalActions
-//	WaitForTurn(ctx, *WaitForTurnRequest) (*WaitForTurnResponse, error) // WS relay until nextToAct==me
-//	Join(ctx, *JoinRequest) (*TxResponse, error)                     // Chain.JoinGame
-//	Act(ctx, *ActRequest) (*TxResponse, error)                       // Chain.PerformAction (sync)
-//	Leave(ctx, *LeaveRequest) (*TxResponse, error)                   // Chain.LeaveGame
+// ListTables returns joinable tables, optionally filtered by seat capacity.
+func (s *Server) ListTables(ctx context.Context, req *agentv1.ListTablesRequest) (*agentv1.ListTablesResponse, error) {
+	games, err := s.chain.ListGames(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "list games: %v", err)
+	}
+
+	out := make([]*agentv1.Table, 0, len(games))
+	for _, g := range games {
+		// Filter by capacity: the table must be able to seat within [min,max].
+		if req.MinPlayers != nil && uint64(g.GameOptions.MaxPlayers) < *req.MinPlayers {
+			continue
+		}
+		if req.MaxPlayers != nil && uint64(g.GameOptions.MinPlayers) > *req.MaxPlayers {
+			continue
+		}
+		out = append(out, &agentv1.Table{
+			GameId:     g.GameID,
+			Variant:    g.Variant,
+			Format:     g.Format,
+			Seated:     uint32(g.CurrentPlayers),
+			MaxSeats:   uint32(g.GameOptions.MaxPlayers),
+			SmallBlind: g.GameOptions.SmallBlind,
+			BigBlind:   g.GameOptions.BigBlind,
+		})
+	}
+	return &agentv1.ListTablesResponse{Tables: out}, nil
+}
+
+// GetMyView returns the caller's table view: full (public) state JSON plus the
+// caller's own legal actions and whether it is their turn.
+func (s *Server) GetMyView(ctx context.Context, req *agentv1.GetMyViewRequest) (*agentv1.GetMyViewResponse, error) {
+	if req.GameId == "" {
+		return nil, status.Error(codes.InvalidArgument, "game_id is required")
+	}
+	raw, err := s.chain.GameStateJSON(ctx, req.GameId)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "game state: %v", err)
+	}
+	gs, err := s.chain.GameState(ctx, req.GameId)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "decode state: %v", err)
+	}
+
+	addr := s.chain.Address()
+	resp := &agentv1.GetMyViewResponse{
+		GameStateJson: raw,
+		MyAddress:     addr,
+	}
+	// Address derivation lands in Phase 2; until then we can still return the
+	// state and leave legal actions / my_turn empty.
+	if addr != "" {
+		if me := gs.PlayerByAddress(addr); me != nil {
+			resp.LegalActions = toProtoLegal(me.LegalActions)
+			resp.MyTurn = me.Seat == gs.NextToAct
+		}
+	}
+	return resp, nil
+}
+
+// WaitForTurn blocks until it is the caller's turn or the timeout elapses.
+// Phase 1 polls the public state; a WS-relay subscription (bot/go relayConnect)
+// can replace the poll later for lower latency.
+func (s *Server) WaitForTurn(ctx context.Context, req *agentv1.WaitForTurnRequest) (*agentv1.WaitForTurnResponse, error) {
+	if req.GameId == "" {
+		return nil, status.Error(codes.InvalidArgument, "game_id is required")
+	}
+	addr := s.chain.Address()
+	if addr == "" {
+		return nil, status.Error(codes.FailedPrecondition, "no agent address (key derivation lands in Phase 2)")
+	}
+
+	timeout := 60 * time.Second
+	if req.TimeoutSeconds != nil {
+		timeout = time.Duration(*req.TimeoutSeconds) * time.Second
+	}
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	tick := time.NewTicker(1 * time.Second)
+	defer tick.Stop()
+
+	for {
+		gs, err := s.chain.GameState(ctx, req.GameId)
+		if err == nil {
+			if me := gs.PlayerByAddress(addr); me != nil && me.Seat == gs.NextToAct {
+				return &agentv1.WaitForTurnResponse{
+					MyTurn:       true,
+					LegalActions: toProtoLegal(me.LegalActions),
+				}, nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return nil, status.FromContextError(ctx.Err()).Err()
+		case <-deadline.C:
+			return &agentv1.WaitForTurnResponse{TimedOut: true}, nil
+		case <-tick.C:
+		}
+	}
+}
+
+func toProtoLegal(in []chain.LegalAction) []*agentv1.LegalAction {
+	out := make([]*agentv1.LegalAction, 0, len(in))
+	for _, a := range in {
+		out = append(out, &agentv1.LegalAction{Action: a.Action, Min: a.Min, Max: a.Max})
+	}
+	return out
+}

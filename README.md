@@ -186,16 +186,26 @@ Best-effort flavour, off the critical path. Exposed via `do("post", {...})`.
 proto/agent/v1/agent.proto   AgentService definition (source of truth)
 buf.yaml / buf.gen.yaml       codegen: Go stubs -> core/gen, TS stubs -> adapter/src/gen
 core/                         Go gRPC core (agentd) — signs Cosmos protos directly
-  cmd/agentd/main.go          entrypoint
-  internal/chain/client.go    REST reads + signed Msg broadcast (ports bot/go)
-  internal/server/server.go   AgentService handlers
+  cmd/agentd/main.go          entrypoint (registers AgentService + reflection)
+  internal/chain/client.go    REST reads (done) + signed Msg broadcast (Phase 2)
+  internal/server/server.go   AgentService handlers (reads done)
+  gen/agent/v1/               committed Go stubs (regenerate: `make gen`)
 adapter/                      TS MCP adapter — `do` tool over the gRPC core
   src/index.ts                MCP server (stdio)
 ```
 
-Run codegen with `buf generate` once [buf](https://buf.build) is installed.
+`make gen` (needs [buf](https://buf.build)) regenerates stubs; `make core-build`,
+`make core-test`, `make agentd` build/test/run the core.
 
 ## Status
 
-Phase 0 scaffold in place (proto, Go core skeleton, TS adapter skeleton). Handlers
-are stubbed with `TODO(phaseN)` markers. See issues #1–#7 for the per-phase breakdown.
+- **Phase 0** ✅ scaffold (proto, Go core, TS adapter).
+- **Phase 1** ✅ read path. `ListTables`, `GetMyView`, `WaitForTurn` implemented and
+  tested against the real wire format — the chain double-encodes JSON under
+  `games` / `game_state`, and `nextToAct` is a **seat number** (not an address or
+  index). `agentd` builds, serves gRPC with reflection, and `go test ./...` is green.
+  `WaitForTurn` polls (1s) for now; a WS-relay subscription can replace the poll later.
+- **Phase 2** ⬜ write path + own-money key derivation (unblocks `GetMyView` legal
+  actions / `my_turn`, which need the agent's address).
+
+See issues #1–#7 for the per-phase breakdown.

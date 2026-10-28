@@ -6,8 +6,8 @@ core/bin/
 node_modules/
 adapter/dist/
 
-# Generated stubs (run `buf generate`)
-core/gen/
+# Generated stubs: Go stubs ARE committed (so `go build` works on clone);
+# regenerate with `buf generate`. TS stubs are regenerated per adapter build.
 adapter/src/gen/
 
 # Env

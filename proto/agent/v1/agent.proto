@@ -21,9 +21,9 @@ service AgentService {
   rpc WaitForTurn(WaitForTurnRequest) returns (WaitForTurnResponse);
 
   // Write path — each maps to a signed Cosmos Msg.
-  rpc Join(JoinRequest) returns (TxResponse);   // -> MsgJoinGame
-  rpc Act(ActRequest) returns (TxResponse);     // -> MsgPerformAction (sync broadcast)
-  rpc Leave(LeaveRequest) returns (TxResponse); // -> MsgLeaveGame
+  rpc Join(JoinRequest) returns (JoinResponse);   // -> MsgJoinGame
+  rpc Act(ActRequest) returns (ActResponse);      // -> MsgPerformAction (sync broadcast)
+  rpc Leave(LeaveRequest) returns (LeaveResponse); // -> MsgLeaveGame
 }
 
 // ---- Discovery ----
@@ -101,8 +101,21 @@ message LeaveRequest {
   repeated string finishing_order = 2; // tournaments
 }
 
-message TxResponse {
+// Tx carries the outcome of a signed, broadcast Cosmos Msg.
+message Tx {
   bool success = 1;
   string tx_hash = 2;
   string error = 3;
+}
+
+message JoinResponse {
+  Tx tx = 1;
+}
+
+message ActResponse {
+  Tx tx = 1;
+}
+
+message LeaveResponse {
+  Tx tx = 1;
 }
