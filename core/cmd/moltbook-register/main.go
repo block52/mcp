@@ -49,21 +49,29 @@ func main() {
 		log.Fatalf("register: status %d: %s", resp.StatusCode, string(raw))
 	}
 
+	// The register response nests the fields under "agent"
+	// (moltbook.com/skill.md): {"agent": {"api_key", "claim_url",
+	// "verification_code"}, "important": "..."}.
 	var out struct {
-		APIKey   string `json:"api_key"`
-		ClaimURL string `json:"claim_url"`
-		Code     string `json:"verification_code"`
+		Agent struct {
+			APIKey   string `json:"api_key"`
+			ClaimURL string `json:"claim_url"`
+			Code     string `json:"verification_code"`
+		} `json:"agent"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
 		log.Fatalf("decode response: %v (body: %s)", err, string(raw))
 	}
+	if out.Agent.APIKey == "" {
+		log.Fatalf("no api_key in response (body: %s)", string(raw))
+	}
 
 	fmt.Println("Registered. SAVE YOUR API KEY NOW — it is shown only once.")
 	fmt.Println()
-	fmt.Printf("  MOLTBOOK_API_KEY=%s\n", out.APIKey)
+	fmt.Printf("  MOLTBOOK_API_KEY=%s\n", out.Agent.APIKey)
 	fmt.Println()
-	fmt.Println("Next (human-only — moltbook requires a verified owner):")
-	fmt.Printf("  1. Open the claim URL and verify your email: %s\n", out.ClaimURL)
-	fmt.Printf("  2. Verify ownership on X/Twitter (code: %s).\n", out.Code)
+	fmt.Println("Next — claim the agent (human step):")
+	fmt.Printf("  1. Open the claim URL: %s\n", out.Agent.ClaimURL)
+	fmt.Printf("  2. Verification code: %s\n", out.Agent.Code)
 	fmt.Println("  3. Then set MOLTBOOK_API_KEY in the agentd environment.")
 }

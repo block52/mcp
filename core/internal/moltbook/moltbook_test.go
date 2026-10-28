@@ -2,7 +2,6 @@ package moltbook
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -42,18 +41,23 @@ func TestPostDisabledWithoutKey(t *testing.T) {
 	}
 }
 
+// moltbook's real success shape: {"success": true, "post": {"id": "<uuid>"}}.
+func writeSuccess(w http.ResponseWriter, id string) {
+	_, _ = w.Write([]byte(`{"success":true,"post":{"id":"` + id + `"}}`))
+}
+
 func TestPostRateLimitSkips(t *testing.T) {
 	var calls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
-		_ = json.NewEncoder(w).Encode(postResponse{PostID: "p1"})
+		writeSuccess(w, "p1")
 	}))
 	defer srv.Close()
 
 	now := time.Unix(1_700_000_000, 0)
 	c := New(Config{APIKey: "k", BaseURL: srv.URL, Now: func() time.Time { return now }})
 
-	// First post sends.
+	// First post sends and returns the nested post.id.
 	r1, err := c.Post(context.Background(), "t1", "c1", "")
 	if err != nil || r1.Skipped || r1.PostID != "p1" {
 		t.Fatalf("first post: %+v err=%v", r1, err)
@@ -75,37 +79,61 @@ func TestPostRateLimitSkips(t *testing.T) {
 	}
 }
 
-func TestPostSolvesMathChallenge(t *testing.T) {
-	var gotAnswer string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer k" {
-			t.Errorf("missing/wrong bearer: %q", r.Header.Get("Authorization"))
-		}
-		var body map[string]string
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		if ans, ok := body["challenge_answer"]; ok {
-			gotAnswer = ans
-			_ = json.NewEncoder(w).Encode(postResponse{PostID: "p2"})
-			return
-		}
-		// First attempt: issue a challenge.
-		_ = json.NewEncoder(w).Encode(postResponse{Challenge: &struct {
-			Question string `json:"question"`
-			Token    string `json:"token"`
-		}{Question: "5 + 6", Token: "tok"}})
+func TestPostAcceptsTopLevelID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"success":true,"id":"top-level-id"}`))
 	}))
 	defer srv.Close()
-
 	c := New(Config{APIKey: "k", BaseURL: srv.URL, Now: func() time.Time { return time.Unix(1, 0) }})
-	r, err := c.Post(context.Background(), "t", "c", "general")
+	r, err := c.Post(context.Background(), "t", "c", "")
+	if err != nil || r.PostID != "top-level-id" {
+		t.Fatalf("top-level id: %+v err=%v", r, err)
+	}
+}
+
+// The bug this fix targets: moltbook confirms a create with a MESSAGE on a 2xx
+// ("Post created! 🦞"), often without echoing an id. That must read as SUCCESS
+// (empty id ok), NOT as an error — status is authoritative, message is not.
+func TestPostSuccessMessageNoIDIsNotError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"message":"Post created! 🦞"}`)) // 2xx, message, no id
+	}))
+	defer srv.Close()
+	c := New(Config{APIKey: "k", BaseURL: srv.URL, Now: func() time.Time { return time.Unix(1, 0) }})
+	r, err := c.Post(context.Background(), "t", "c", "")
 	if err != nil {
-		t.Fatalf("post with challenge: %v", err)
+		t.Fatalf("2xx with a success message must not error: %v", err)
 	}
-	if r.PostID != "p2" {
-		t.Fatalf("post id = %q, want p2", r.PostID)
+	if r.Skipped {
+		t.Fatal("should not be skipped")
 	}
-	if gotAnswer != "11" {
-		t.Fatalf("challenge answer = %q, want 11", gotAnswer)
+	// id legitimately empty here — the post still succeeded.
+}
+
+// verification_required must be surfaced as an error, not faked as published.
+func TestPostVerificationRequiredSurfaced(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"verification_required":true,"verification":{"verification_code":"mv_x","challenge_text":"a word problem"}}`))
+	}))
+	defer srv.Close()
+	c := New(Config{APIKey: "k", BaseURL: srv.URL, Now: func() time.Time { return time.Unix(1, 0) }})
+	_, err := c.Post(context.Background(), "t", "c", "")
+	if err == nil || !strings.Contains(err.Error(), "verification") {
+		t.Fatalf("expected a verification error, got %v", err)
+	}
+}
+
+// moltbook's 429 shape: {statusCode, message, hint, retry_after_seconds}.
+func TestPostRateLimitedByServerSurfacesMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"statusCode":429,"message":"You can only post once every 2.5 minutes","hint":"Wait 138 seconds"}`))
+	}))
+	defer srv.Close()
+	c := New(Config{APIKey: "k", BaseURL: srv.URL, Now: func() time.Time { return time.Unix(1, 0) }})
+	_, err := c.Post(context.Background(), "t", "c", "")
+	if err == nil || !strings.Contains(err.Error(), "once every 2.5 minutes") {
+		t.Fatalf("expected the server's rate-limit message, got %v", err)
 	}
 }
 

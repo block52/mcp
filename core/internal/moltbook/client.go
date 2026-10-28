@@ -97,7 +97,7 @@ func (c *Client) Post(ctx context.Context, title, content, submolt string) (Post
 	c.mu.Unlock()
 
 	body := map[string]string{"submolt_name": submolt, "title": title, "content": content}
-	id, err := c.submit(ctx, body, false)
+	id, err := c.submit(ctx, body)
 	if err != nil {
 		return PostResult{}, err
 	}
@@ -108,22 +108,68 @@ func (c *Client) Post(ctx context.Context, title, content, submolt string) (Post
 	return PostResult{PostID: id}, nil
 }
 
-// postResponse is moltbook's post reply. A non-empty Challenge means the post was
-// NOT published and must be resubmitted with the solved answer.
+// postResponse models moltbook's /api/v1/posts reply across its real shapes
+// (confirmed against the live API):
+//
+//	success:  {"success": true, "post": {"id": "<uuid>", ...}}  (id may also be top-level)
+//	error:    {"statusCode": 429, "message": "...", "hint": "...", "retry_after_seconds": N}
+//	verify:   {"verification_required": true, "verification": {"verification_code","challenge_text","expires_at"}}
+//
+// A post is published only when an id is present. verification_required means it
+// is HELD pending a separate POST /api/v1/verify with the solved challenge.
 type postResponse struct {
-	PostID    string `json:"post_id"`
-	ID        string `json:"id"` // some responses use "id"
-	Challenge *struct {
-		Question string `json:"question"` // e.g. "3 + 4"
-		Token    string `json:"token"`    // opaque, echoed back with the answer
-	} `json:"challenge"`
-	Error string `json:"error"`
+	Success bool `json:"success"`
+	// id can arrive top-level or nested under "post".
+	ID   string `json:"id"`
+	Post *struct {
+		ID string `json:"id"`
+	} `json:"post"`
+
+	VerificationRequired bool `json:"verification_required"`
+	Verification         *struct {
+		Code      string `json:"verification_code"`
+		Challenge string `json:"challenge_text"`
+	} `json:"verification"`
+
+	// error shape (also present on 4xx/5xx bodies).
+	Message string `json:"message"`
+	Hint    string `json:"hint"`
+	ErrorV  string `json:"error"` // older/alternate error field
 }
 
-// submit POSTs to /api/v1/posts, solving a math challenge once if asked.
-func (c *Client) submit(ctx context.Context, body map[string]string, isRetry bool) (string, error) {
-	raw, _ := json.Marshal(body)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/posts", bytes.NewReader(raw))
+func (p *postResponse) postID() string {
+	if p.ID != "" {
+		return p.ID
+	}
+	if p.Post != nil {
+		return p.Post.ID
+	}
+	return ""
+}
+
+// errText builds a terse, key-free error string from whatever the body carried.
+func (p *postResponse) errText() string {
+	switch {
+	case p.Message != "":
+		if p.Hint != "" {
+			return p.Message + " (" + p.Hint + ")"
+		}
+		return p.Message
+	case p.ErrorV != "":
+		return p.ErrorV
+	default:
+		return ""
+	}
+}
+
+// submit POSTs to /api/v1/posts and returns the published post id (which may be
+// empty — moltbook confirms a create with a message rather than always echoing an
+// id). HTTP STATUS is authoritative: `message` appears on BOTH success
+// ("Post created! 🦞") and error ("You can only post…"), so it must never be read
+// as an error on a 2xx. A verification_required hold is surfaced explicitly (the
+// separate /verify word-problem flow is not implemented — see README).
+func (c *Client) submit(ctx context.Context, body map[string]string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/posts", bytes.NewReader(mustJSON(body)))
 	if err != nil {
 		return "", err
 	}
@@ -137,39 +183,29 @@ func (c *Client) submit(ctx context.Context, body map[string]string, isRetry boo
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
 
+	var pr postResponse
+	// Best-effort decode; a non-JSON body still yields a clean status error below.
+	_ = json.Unmarshal(data, &pr)
+
+	// Status is the source of truth. message/hint explain a failure here.
 	if resp.StatusCode >= 400 {
-		// Do not echo the response body unbounded — it could contain nothing
-		// sensitive, but keep errors terse and key-free.
+		if msg := pr.errText(); msg != "" {
+			return "", fmt.Errorf("moltbook post: status %d: %s", resp.StatusCode, msg)
+		}
 		return "", fmt.Errorf("moltbook post: status %d", resp.StatusCode)
 	}
 
-	var pr postResponse
-	if err := json.Unmarshal(data, &pr); err != nil {
-		return "", fmt.Errorf("moltbook post: decode response: %w", err)
-	}
-	if pr.Error != "" {
-		return "", fmt.Errorf("moltbook post: %s", pr.Error)
+	// 2xx. A hold still means NOT published.
+	if pr.VerificationRequired {
+		return "", fmt.Errorf("moltbook post: held for verification (manual /verify required; challenge not auto-solvable)")
 	}
 
-	if pr.Challenge != nil {
-		if isRetry {
-			return "", fmt.Errorf("moltbook post: challenge not accepted after solving")
-		}
-		answer, err := solveChallenge(pr.Challenge.Question)
-		if err != nil {
-			return "", fmt.Errorf("moltbook post: %w", err)
-		}
-		next := map[string]string{}
-		for k, v := range body {
-			next[k] = v
-		}
-		next["challenge_token"] = pr.Challenge.Token
-		next["challenge_answer"] = answer
-		return c.submit(ctx, next, true)
-	}
+	// Published. id may be present (nested or top-level) or absent (moltbook
+	// confirmed via message). Either way a 2xx non-hold is a successful post.
+	return pr.postID(), nil
+}
 
-	if pr.PostID != "" {
-		return pr.PostID, nil
-	}
-	return pr.ID, nil
+func mustJSON(v any) []byte {
+	b, _ := json.Marshal(v)
+	return b
 }
