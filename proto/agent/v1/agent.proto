@@ -1,0 +1,108 @@
+syntax = "proto3";
+
+package agent.v1;
+
+option go_package = "github.com/block52/mcp/core/gen/agent/v1;agentv1";
+
+// AgentService is the canonical, typed interface AI agents use to play poker on
+// Block52. LLM agents reach it via the MCP adapter; non-LLM bots (Go/Python/TS)
+// can call it directly. The service wraps the Block52 chain
+// (/pokerchain.poker.v1.Msg*) — it is NOT the chain itself.
+service AgentService {
+  // Discovery
+  rpc ListTables(ListTablesRequest) returns (ListTablesResponse);
+
+  // Live view — includes the caller's own hole cards + legal actions.
+  // Spectator (opponents hidden) is served by the UI via the chain's
+  // game_state_public endpoint, not here.
+  rpc GetMyView(GetMyViewRequest) returns (GetMyViewResponse);
+
+  // Blocks (server-streams a single terminal message) until nextToAct == me.
+  rpc WaitForTurn(WaitForTurnRequest) returns (WaitForTurnResponse);
+
+  // Write path — each maps to a signed Cosmos Msg.
+  rpc Join(JoinRequest) returns (TxResponse);   // -> MsgJoinGame
+  rpc Act(ActRequest) returns (TxResponse);     // -> MsgPerformAction (sync broadcast)
+  rpc Leave(LeaveRequest) returns (TxResponse); // -> MsgLeaveGame
+}
+
+// ---- Discovery ----
+
+message ListTablesRequest {
+  optional uint64 min_players = 1;
+  optional uint64 max_players = 2;
+}
+
+message Table {
+  string game_id = 1;
+  string variant = 2;   // e.g. texas-holdem, omaha
+  string format = 3;    // cash | sng | tournament
+  uint32 seated = 4;
+  uint32 max_seats = 5;
+  string small_blind = 6; // string for BigInt safety (micro-USDC)
+  string big_blind = 7;
+}
+
+message ListTablesResponse {
+  repeated Table tables = 1;
+}
+
+// ---- View ----
+
+message GetMyViewRequest {
+  string game_id = 1;
+}
+
+message LegalAction {
+  string action = 1; // fold | check | call | bet | raise | ...
+  string min = 2;    // micro-USDC, string
+  string max = 3;
+}
+
+message GetMyViewResponse {
+  // Full chain game_state JSON for the table (opaque passthrough — the chain is
+  // the source of truth for the shape). Includes the caller's hole cards.
+  string game_state_json = 1;
+  repeated LegalAction legal_actions = 2;
+  bool my_turn = 3;
+  string my_address = 4;
+}
+
+// ---- Turn wait ----
+
+message WaitForTurnRequest {
+  string game_id = 1;
+  optional uint32 timeout_seconds = 2;
+}
+
+message WaitForTurnResponse {
+  bool my_turn = 1;
+  bool timed_out = 2;
+  repeated LegalAction legal_actions = 3;
+}
+
+// ---- Write path ----
+
+message JoinRequest {
+  string game_id = 1;
+  uint32 seat = 2;
+  string buy_in = 3; // micro-USDC, string
+}
+
+message ActRequest {
+  string game_id = 1;
+  string action = 2;          // fold | check | call | bet | raise | ...
+  optional string amount = 3; // micro-USDC, string; required for bet/raise/top-up
+  optional string data = 4;   // e.g. packed card selectors for Omaha
+}
+
+message LeaveRequest {
+  string game_id = 1;
+  repeated string finishing_order = 2; // tournaments
+}
+
+message TxResponse {
+  bool success = 1;
+  string tx_hash = 2;
+  string error = 3;
+}

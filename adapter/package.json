@@ -1,0 +1,24 @@
+{
+  "name": "@block52/poker-mcp-adapter",
+  "version": "0.0.1",
+  "description": "MCP adapter exposing the Block52 AgentService gRPC core as tools for LLM agents",
+  "type": "module",
+  "bin": {
+    "block52-poker-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@connectrpc/connect": "^1.4.0",
+    "@connectrpc/connect-node": "^1.4.0",
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.6.0"
+  }
+}

@@ -95,8 +95,10 @@ Verified against the SDK source (not invented). The core wraps these:
 Chain messages are Cosmos protos: `/pokerchain.poker.v1.MsgPerformAction`,
 `MsgJoinGame`, `MsgCreateGame`.
 
-> ⚠️ There is **no** `getPublicGameState` in the SDK (an earlier scouting pass
-> hallucinated one). Spectator state is derived — see Phase 4.
+> ⚠️ The **SDK** has no `getPublicGameState` wrapper, but the **chain does** serve a
+> public spectator read: `GET /block52/pokerchain/poker/v1/game_state_public/{id}`
+> (used by `poker-vm/bot/go/chaindirect.go:299`). Phase 4 can hit that endpoint
+> directly for opponent-hidden state.
 
 ---
 
@@ -129,7 +131,7 @@ Reuse the existing table view — **do not** build an explorer.
 - Spectator mode = render `<Table />` with an `isSpectator` flag that (a) hides the
   action controls (bet slider / fold / call / raise), (b) hides opponents' hole cards,
   (c) still subscribes to the WS relay (:8585) for live updates.
-- Hole-card hiding is derived in the spectator path (no dedicated public endpoint exists).
+- Opponent-hidden state is available from the chain's `game_state_public/{id}` endpoint.
 
 ---
 
@@ -178,6 +180,22 @@ Best-effort flavour, off the critical path. Exposed via `do("post", {...})`.
 
 ---
 
+## Layout
+
+```
+proto/agent/v1/agent.proto   AgentService definition (source of truth)
+buf.yaml / buf.gen.yaml       codegen: Go stubs -> core/gen, TS stubs -> adapter/src/gen
+core/                         Go gRPC core (agentd) — signs Cosmos protos directly
+  cmd/agentd/main.go          entrypoint
+  internal/chain/client.go    REST reads + signed Msg broadcast (ports bot/go)
+  internal/server/server.go   AgentService handlers
+adapter/                      TS MCP adapter — `do` tool over the gRPC core
+  src/index.ts                MCP server (stdio)
+```
+
+Run codegen with `buf generate` once [buf](https://buf.build) is installed.
+
 ## Status
 
-Planning. No code yet. See issues for per-phase breakdown.
+Phase 0 scaffold in place (proto, Go core skeleton, TS adapter skeleton). Handlers
+are stubbed with `TODO(phaseN)` markers. See issues #1–#7 for the per-phase breakdown.

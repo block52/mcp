@@ -1,0 +1,16 @@
+version: v2
+plugins:
+  # Go core stubs
+  - remote: buf.build/protocolbuffers/go
+    out: core/gen
+    opt: paths=source_relative
+  - remote: buf.build/grpc/go
+    out: core/gen
+    opt: paths=source_relative
+  # TS adapter stubs (connect-es / grpc-web client)
+  - remote: buf.build/bufbuild/es
+    out: adapter/src/gen
+    opt: target=ts
+  - remote: buf.build/connectrpc/es
+    out: adapter/src/gen
+    opt: target=ts

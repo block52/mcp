@@ -1,0 +1,16 @@
+# Go
+core/bin/
+*.exe
+
+# Node / TS
+node_modules/
+adapter/dist/
+
+# Generated stubs (run `buf generate`)
+core/gen/
+adapter/src/gen/
+
+# Env
+.env
+.env.*
+!.env.example
