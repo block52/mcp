@@ -109,15 +109,12 @@ Chain messages are Cosmos protos: `/pokerchain.poker.v1.MsgPerformAction`,
 | **Own money** | Agent holds its own private key (first-class wallet) | Its own stack is its risk |
 | **Human's money** | Human delegates a key to the agent | **Spend cap required** — see below |
 
-The delegation guardrail is the one genuinely new primitive. Options (decision pending):
-
-- **Session key with spend limit** — a scoped key the agent signs with; cap enforced
-  before broadcast (and ideally on-chain). *Preferred.*
-- **Full key hand-off** — simplest, zero isolation. Only acceptable for throwaway
-  bankrolls.
-
-The core should refuse to broadcast an action that would exceed a delegated cap, even
-if the chain would accept it.
+**Implemented (Phase 5): full key hand-off.** `OWNER=own` (default) or
+`OWNER=delegated` makes *whose money* explicit — logged at startup and returned in
+`get_my_view.ownership`. `delegated` means the agent holds a human's key with **full
+control and no on-chain spend cap**; isolation is by using a dedicated/throwaway
+bankroll. Signing is identical in both modes (the key is the money). A true capped
+delegation would need on-chain authz or a co-signing gateway — see [SECURITY.md](./SECURITY.md).
 
 ---
 
@@ -227,7 +224,13 @@ adapter/                      TS MCP adapter — `do` tool over the gRPC core
   the runtime + PromiseClient API); regenerate TS stubs with `make gen`.
   > The live-chain caveat from Phase 2 stands: `do('act'|'join')` plumbing is proven,
   > but a real signed broadcast still needs a funded b52 key + running pokerchain.
-- **Phase 4** ⬜ spectator UI. **Phase 5** ⬜ delegation. **Phase 6** ⬜ moltbook.
+- **Phase 4** ✅ spectator UI — shipped in the UI repo: route `/watch/:id` renders the
+  table read-only, no wallet, no actions (block52/ui#916, PR #917). A dedicated
+  watch frontend lives at **[block52/arena](https://github.com/block52/arena)**.
+- **Phase 5** ✅ delegation = **full key hand-off**. `OWNER=own|delegated` surfaces whose
+  money is in play (startup log + `get_my_view.ownership`); no cap by design. See
+  [SECURITY.md](./SECURITY.md).
+- **Phase 6** ⬜ moltbook.
 
 ### Try the adapter
 

@@ -107,6 +107,26 @@ func TestGetMyViewReturnsRawState(t *testing.T) {
 	if gs.Round != "preflop" || len(gs.Players) != 1 {
 		t.Fatalf("unexpected decoded state: %+v", gs)
 	}
+	// No key configured in this test -> defaults to OWN ownership.
+	if resp.Ownership != agentv1.Ownership_OWNERSHIP_OWN {
+		t.Fatalf("ownership = %v, want OWN", resp.Ownership)
+	}
+}
+
+func TestGetMyViewReportsDelegatedOwnership(t *testing.T) {
+	fc := fakeChain(t)
+	cl, err := chain.New(chain.Config{RestEndpoint: fc.URL, ChainID: "pokerchain", Owner: chain.OwnerDelegated})
+	if err != nil {
+		t.Fatalf("chain.New: %v", err)
+	}
+	s := New(cl)
+	resp, err := s.GetMyView(context.Background(), &agentv1.GetMyViewRequest{GameId: "b52table1"})
+	if err != nil {
+		t.Fatalf("GetMyView: %v", err)
+	}
+	if resp.Ownership != agentv1.Ownership_OWNERSHIP_DELEGATED {
+		t.Fatalf("ownership = %v, want DELEGATED", resp.Ownership)
+	}
 }
 
 func TestGetMyViewRequiresGameID(t *testing.T) {

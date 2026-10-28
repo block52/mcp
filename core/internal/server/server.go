@@ -71,6 +71,7 @@ func (s *Server) GetMyView(ctx context.Context, req *agentv1.GetMyViewRequest) (
 	resp := &agentv1.GetMyViewResponse{
 		GameStateJson: raw,
 		MyAddress:     addr,
+		Ownership:     ownershipEnum(s.chain.Owner()),
 	}
 	// Address derivation lands in Phase 2; until then we can still return the
 	// state and leave legal actions / my_turn empty.
@@ -173,6 +174,14 @@ func grpcErr(err error) error {
 		return nil
 	}
 	return status.Errorf(codes.Unavailable, "%v", err)
+}
+
+// ownershipEnum maps the chain client's string ownership to the proto enum.
+func ownershipEnum(owner string) agentv1.Ownership {
+	if owner == chain.OwnerDelegated {
+		return agentv1.Ownership_OWNERSHIP_DELEGATED
+	}
+	return agentv1.Ownership_OWNERSHIP_OWN
 }
 
 func toProtoLegal(in []chain.LegalAction) []*agentv1.LegalAction {

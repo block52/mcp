@@ -33,6 +33,7 @@ func main() {
 		ChainID:       env("CHAIN_ID", "pokerchain"),
 		Mnemonic:      os.Getenv("MNEMONIC"),
 		PrivateKeyHex: os.Getenv("PRIVATE_KEY"),
+		Owner:         env("OWNER", chain.OwnerOwn),
 	}
 
 	cl, err := chain.New(cfg)
@@ -40,6 +41,18 @@ func main() {
 		log.Fatalf("chain client: %v", err)
 	}
 	srv := server.New(cl)
+
+	// Make "whose money" unmistakable at startup. A full key hand-off has no
+	// on-chain cap — the agent can spend the entire balance.
+	if cl.HasKey() {
+		if cl.Owner() == chain.OwnerDelegated {
+			log.Printf("WARNING: OWNER=delegated — agent %s holds a HUMAN's key with FULL control and NO spend cap. Use a dedicated/throwaway bankroll only.", cl.Address())
+		} else {
+			log.Printf("agent %s playing with its OWN money", cl.Address())
+		}
+	} else {
+		log.Printf("no key configured — read-only (agent cannot join/act)")
+	}
 
 	addr := env("LISTEN", ":50051")
 	lis, err := net.Listen("tcp", addr)

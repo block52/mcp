@@ -21,6 +21,60 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Ownership of the bankroll the agent is playing with (Phase 5). This does NOT
+// change signing — it makes "whose money" explicit so it is visible to the agent
+// and surfaced to any watching human. DELEGATED is a full key hand-off: the agent
+// holds the human's key outright and can spend the entire balance. There is NO
+// on-chain spend cap — isolation is by using a dedicated/throwaway bankroll only.
+type Ownership int32
+
+const (
+	Ownership_OWNERSHIP_UNSPECIFIED Ownership = 0
+	Ownership_OWNERSHIP_OWN         Ownership = 1 // the agent's own key / own money
+	Ownership_OWNERSHIP_DELEGATED   Ownership = 2 // a human's key handed to the agent (full control)
+)
+
+// Enum value maps for Ownership.
+var (
+	Ownership_name = map[int32]string{
+		0: "OWNERSHIP_UNSPECIFIED",
+		1: "OWNERSHIP_OWN",
+		2: "OWNERSHIP_DELEGATED",
+	}
+	Ownership_value = map[string]int32{
+		"OWNERSHIP_UNSPECIFIED": 0,
+		"OWNERSHIP_OWN":         1,
+		"OWNERSHIP_DELEGATED":   2,
+	}
+)
+
+func (x Ownership) Enum() *Ownership {
+	p := new(Ownership)
+	*p = x
+	return p
+}
+
+func (x Ownership) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Ownership) Descriptor() protoreflect.EnumDescriptor {
+	return file_agent_v1_agent_proto_enumTypes[0].Descriptor()
+}
+
+func (Ownership) Type() protoreflect.EnumType {
+	return &file_agent_v1_agent_proto_enumTypes[0]
+}
+
+func (x Ownership) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Ownership.Descriptor instead.
+func (Ownership) EnumDescriptor() ([]byte, []int) {
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{0}
+}
+
 type ListTablesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MinPlayers    *uint64                `protobuf:"varint,1,opt,name=min_players,json=minPlayers,proto3,oneof" json:"min_players,omitempty"`
@@ -321,6 +375,7 @@ type GetMyViewResponse struct {
 	LegalActions  []*LegalAction `protobuf:"bytes,2,rep,name=legal_actions,json=legalActions,proto3" json:"legal_actions,omitempty"`
 	MyTurn        bool           `protobuf:"varint,3,opt,name=my_turn,json=myTurn,proto3" json:"my_turn,omitempty"`
 	MyAddress     string         `protobuf:"bytes,4,opt,name=my_address,json=myAddress,proto3" json:"my_address,omitempty"`
+	Ownership     Ownership      `protobuf:"varint,5,opt,name=ownership,proto3,enum=agent.v1.Ownership" json:"ownership,omitempty"` // whose money this agent is playing with
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -381,6 +436,13 @@ func (x *GetMyViewResponse) GetMyAddress() string {
 		return x.MyAddress
 	}
 	return ""
+}
+
+func (x *GetMyViewResponse) GetOwnership() Ownership {
+	if x != nil {
+		return x.Ownership
+	}
+	return Ownership_OWNERSHIP_UNSPECIFIED
 }
 
 type WaitForTurnRequest struct {
@@ -896,13 +958,14 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\vLegalAction\x12\x16\n" +
 	"\x06action\x18\x01 \x01(\tR\x06action\x12\x10\n" +
 	"\x03min\x18\x02 \x01(\tR\x03min\x12\x10\n" +
-	"\x03max\x18\x03 \x01(\tR\x03max\"\xaf\x01\n" +
+	"\x03max\x18\x03 \x01(\tR\x03max\"\xe2\x01\n" +
 	"\x11GetMyViewResponse\x12&\n" +
 	"\x0fgame_state_json\x18\x01 \x01(\tR\rgameStateJson\x12:\n" +
 	"\rlegal_actions\x18\x02 \x03(\v2\x15.agent.v1.LegalActionR\flegalActions\x12\x17\n" +
 	"\amy_turn\x18\x03 \x01(\bR\x06myTurn\x12\x1d\n" +
 	"\n" +
-	"my_address\x18\x04 \x01(\tR\tmyAddress\"o\n" +
+	"my_address\x18\x04 \x01(\tR\tmyAddress\x121\n" +
+	"\townership\x18\x05 \x01(\x0e2\x13.agent.v1.OwnershipR\townership\"o\n" +
 	"\x12WaitForTurnRequest\x12\x17\n" +
 	"\agame_id\x18\x01 \x01(\tR\x06gameId\x12,\n" +
 	"\x0ftimeout_seconds\x18\x02 \x01(\rH\x00R\x0etimeoutSeconds\x88\x01\x01B\x12\n" +
@@ -935,7 +998,11 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\vActResponse\x12\x1c\n" +
 	"\x02tx\x18\x01 \x01(\v2\f.agent.v1.TxR\x02tx\"-\n" +
 	"\rLeaveResponse\x12\x1c\n" +
-	"\x02tx\x18\x01 \x01(\v2\f.agent.v1.TxR\x02tx2\x8e\x03\n" +
+	"\x02tx\x18\x01 \x01(\v2\f.agent.v1.TxR\x02tx*R\n" +
+	"\tOwnership\x12\x19\n" +
+	"\x15OWNERSHIP_UNSPECIFIED\x10\x00\x12\x11\n" +
+	"\rOWNERSHIP_OWN\x10\x01\x12\x17\n" +
+	"\x13OWNERSHIP_DELEGATED\x10\x022\x8e\x03\n" +
 	"\fAgentService\x12G\n" +
 	"\n" +
 	"ListTables\x12\x1b.agent.v1.ListTablesRequest\x1a\x1c.agent.v1.ListTablesResponse\x12D\n" +
@@ -957,48 +1024,51 @@ func file_agent_v1_agent_proto_rawDescGZIP() []byte {
 	return file_agent_v1_agent_proto_rawDescData
 }
 
+var file_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_agent_v1_agent_proto_goTypes = []any{
-	(*ListTablesRequest)(nil),   // 0: agent.v1.ListTablesRequest
-	(*Table)(nil),               // 1: agent.v1.Table
-	(*ListTablesResponse)(nil),  // 2: agent.v1.ListTablesResponse
-	(*GetMyViewRequest)(nil),    // 3: agent.v1.GetMyViewRequest
-	(*LegalAction)(nil),         // 4: agent.v1.LegalAction
-	(*GetMyViewResponse)(nil),   // 5: agent.v1.GetMyViewResponse
-	(*WaitForTurnRequest)(nil),  // 6: agent.v1.WaitForTurnRequest
-	(*WaitForTurnResponse)(nil), // 7: agent.v1.WaitForTurnResponse
-	(*JoinRequest)(nil),         // 8: agent.v1.JoinRequest
-	(*ActRequest)(nil),          // 9: agent.v1.ActRequest
-	(*LeaveRequest)(nil),        // 10: agent.v1.LeaveRequest
-	(*Tx)(nil),                  // 11: agent.v1.Tx
-	(*JoinResponse)(nil),        // 12: agent.v1.JoinResponse
-	(*ActResponse)(nil),         // 13: agent.v1.ActResponse
-	(*LeaveResponse)(nil),       // 14: agent.v1.LeaveResponse
+	(Ownership)(0),              // 0: agent.v1.Ownership
+	(*ListTablesRequest)(nil),   // 1: agent.v1.ListTablesRequest
+	(*Table)(nil),               // 2: agent.v1.Table
+	(*ListTablesResponse)(nil),  // 3: agent.v1.ListTablesResponse
+	(*GetMyViewRequest)(nil),    // 4: agent.v1.GetMyViewRequest
+	(*LegalAction)(nil),         // 5: agent.v1.LegalAction
+	(*GetMyViewResponse)(nil),   // 6: agent.v1.GetMyViewResponse
+	(*WaitForTurnRequest)(nil),  // 7: agent.v1.WaitForTurnRequest
+	(*WaitForTurnResponse)(nil), // 8: agent.v1.WaitForTurnResponse
+	(*JoinRequest)(nil),         // 9: agent.v1.JoinRequest
+	(*ActRequest)(nil),          // 10: agent.v1.ActRequest
+	(*LeaveRequest)(nil),        // 11: agent.v1.LeaveRequest
+	(*Tx)(nil),                  // 12: agent.v1.Tx
+	(*JoinResponse)(nil),        // 13: agent.v1.JoinResponse
+	(*ActResponse)(nil),         // 14: agent.v1.ActResponse
+	(*LeaveResponse)(nil),       // 15: agent.v1.LeaveResponse
 }
 var file_agent_v1_agent_proto_depIdxs = []int32{
-	1,  // 0: agent.v1.ListTablesResponse.tables:type_name -> agent.v1.Table
-	4,  // 1: agent.v1.GetMyViewResponse.legal_actions:type_name -> agent.v1.LegalAction
-	4,  // 2: agent.v1.WaitForTurnResponse.legal_actions:type_name -> agent.v1.LegalAction
-	11, // 3: agent.v1.JoinResponse.tx:type_name -> agent.v1.Tx
-	11, // 4: agent.v1.ActResponse.tx:type_name -> agent.v1.Tx
-	11, // 5: agent.v1.LeaveResponse.tx:type_name -> agent.v1.Tx
-	0,  // 6: agent.v1.AgentService.ListTables:input_type -> agent.v1.ListTablesRequest
-	3,  // 7: agent.v1.AgentService.GetMyView:input_type -> agent.v1.GetMyViewRequest
-	6,  // 8: agent.v1.AgentService.WaitForTurn:input_type -> agent.v1.WaitForTurnRequest
-	8,  // 9: agent.v1.AgentService.Join:input_type -> agent.v1.JoinRequest
-	9,  // 10: agent.v1.AgentService.Act:input_type -> agent.v1.ActRequest
-	10, // 11: agent.v1.AgentService.Leave:input_type -> agent.v1.LeaveRequest
-	2,  // 12: agent.v1.AgentService.ListTables:output_type -> agent.v1.ListTablesResponse
-	5,  // 13: agent.v1.AgentService.GetMyView:output_type -> agent.v1.GetMyViewResponse
-	7,  // 14: agent.v1.AgentService.WaitForTurn:output_type -> agent.v1.WaitForTurnResponse
-	12, // 15: agent.v1.AgentService.Join:output_type -> agent.v1.JoinResponse
-	13, // 16: agent.v1.AgentService.Act:output_type -> agent.v1.ActResponse
-	14, // 17: agent.v1.AgentService.Leave:output_type -> agent.v1.LeaveResponse
-	12, // [12:18] is the sub-list for method output_type
-	6,  // [6:12] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	2,  // 0: agent.v1.ListTablesResponse.tables:type_name -> agent.v1.Table
+	5,  // 1: agent.v1.GetMyViewResponse.legal_actions:type_name -> agent.v1.LegalAction
+	0,  // 2: agent.v1.GetMyViewResponse.ownership:type_name -> agent.v1.Ownership
+	5,  // 3: agent.v1.WaitForTurnResponse.legal_actions:type_name -> agent.v1.LegalAction
+	12, // 4: agent.v1.JoinResponse.tx:type_name -> agent.v1.Tx
+	12, // 5: agent.v1.ActResponse.tx:type_name -> agent.v1.Tx
+	12, // 6: agent.v1.LeaveResponse.tx:type_name -> agent.v1.Tx
+	1,  // 7: agent.v1.AgentService.ListTables:input_type -> agent.v1.ListTablesRequest
+	4,  // 8: agent.v1.AgentService.GetMyView:input_type -> agent.v1.GetMyViewRequest
+	7,  // 9: agent.v1.AgentService.WaitForTurn:input_type -> agent.v1.WaitForTurnRequest
+	9,  // 10: agent.v1.AgentService.Join:input_type -> agent.v1.JoinRequest
+	10, // 11: agent.v1.AgentService.Act:input_type -> agent.v1.ActRequest
+	11, // 12: agent.v1.AgentService.Leave:input_type -> agent.v1.LeaveRequest
+	3,  // 13: agent.v1.AgentService.ListTables:output_type -> agent.v1.ListTablesResponse
+	6,  // 14: agent.v1.AgentService.GetMyView:output_type -> agent.v1.GetMyViewResponse
+	8,  // 15: agent.v1.AgentService.WaitForTurn:output_type -> agent.v1.WaitForTurnResponse
+	13, // 16: agent.v1.AgentService.Join:output_type -> agent.v1.JoinResponse
+	14, // 17: agent.v1.AgentService.Act:output_type -> agent.v1.ActResponse
+	15, // 18: agent.v1.AgentService.Leave:output_type -> agent.v1.LeaveResponse
+	13, // [13:19] is the sub-list for method output_type
+	7,  // [7:13] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_agent_v1_agent_proto_init() }
@@ -1014,13 +1084,14 @@ func file_agent_v1_agent_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_v1_agent_proto_rawDesc), len(file_agent_v1_agent_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_agent_v1_agent_proto_goTypes,
 		DependencyIndexes: file_agent_v1_agent_proto_depIdxs,
+		EnumInfos:         file_agent_v1_agent_proto_enumTypes,
 		MessageInfos:      file_agent_v1_agent_proto_msgTypes,
 	}.Build()
 	File_agent_v1_agent_proto = out.File

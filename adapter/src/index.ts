@@ -15,8 +15,21 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { makeClient, type AgentClient } from "./client.js";
+import { Ownership } from "./gen/agent/v1/agent_pb.js";
 
 const CORE_ADDR = process.env.CORE_ADDR ?? "http://localhost:50051";
+
+/** Human-readable ownership of the bankroll the agent is playing with. */
+function ownershipLabel(o: Ownership): "own" | "delegated" | "unspecified" {
+  switch (o) {
+    case Ownership.OWN:
+      return "own";
+    case Ownership.DELEGATED:
+      return "delegated";
+    default:
+      return "unspecified";
+  }
+}
 
 /** Wrap a JSON-able value as an MCP text result. */
 function ok(value: unknown) {
@@ -104,6 +117,7 @@ function registerTools(server: McpServer, client: AgentClient) {
         return ok({
           my_address: r.myAddress,
           my_turn: r.myTurn,
+          ownership: ownershipLabel(r.ownership),
           legal_actions: r.legalActions,
           game_state: JSON.parse(r.gameStateJson || "null"),
         });

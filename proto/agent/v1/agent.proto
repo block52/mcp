@@ -59,6 +59,17 @@ message LegalAction {
   string max = 3;
 }
 
+// Ownership of the bankroll the agent is playing with (Phase 5). This does NOT
+// change signing — it makes "whose money" explicit so it is visible to the agent
+// and surfaced to any watching human. DELEGATED is a full key hand-off: the agent
+// holds the human's key outright and can spend the entire balance. There is NO
+// on-chain spend cap — isolation is by using a dedicated/throwaway bankroll only.
+enum Ownership {
+  OWNERSHIP_UNSPECIFIED = 0;
+  OWNERSHIP_OWN = 1;       // the agent's own key / own money
+  OWNERSHIP_DELEGATED = 2; // a human's key handed to the agent (full control)
+}
+
 message GetMyViewResponse {
   // Full chain game_state JSON for the table (opaque passthrough — the chain is
   // the source of truth for the shape). Includes the caller's hole cards.
@@ -66,6 +77,7 @@ message GetMyViewResponse {
   repeated LegalAction legal_actions = 2;
   bool my_turn = 3;
   string my_address = 4;
+  Ownership ownership = 5; // whose money this agent is playing with
 }
 
 // ---- Turn wait ----

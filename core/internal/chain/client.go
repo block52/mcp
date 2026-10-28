@@ -33,10 +33,13 @@ type Config struct {
 	RpcEndpoint  string // e.g. http://localhost:26657
 	WsEndpoint   string // WS relay, e.g. ws://localhost:8585
 	ChainID      string // "pokerchain"
-	// Mnemonic OR PrivateKeyHex identifies the agent. "Own money" = the agent's
-	// own key. "Human's money" (Phase 5) = a delegated, spend-capped key.
+	// Mnemonic OR PrivateKeyHex identifies the agent.
 	Mnemonic      string
 	PrivateKeyHex string
+	// Owner declares whose money the key controls (Phase 5). "own" = the agent's
+	// own bankroll; "delegated" = a human's key handed to the agent in full (no
+	// on-chain cap — use a dedicated/throwaway bankroll). Defaults to "own".
+	Owner string
 }
 
 // Client is the chain-facing surface the gRPC server depends on.
@@ -82,6 +85,21 @@ func (c *Client) Address() string {
 
 // HasKey reports whether the client can sign (a key was configured).
 func (c *Client) HasKey() bool { return c.wallet != nil }
+
+// Ownership values (string form; proto enum mapping lives in the server).
+const (
+	OwnerOwn       = "own"
+	OwnerDelegated = "delegated"
+)
+
+// Owner returns the normalized ownership of the configured key: OwnerDelegated
+// only when explicitly set, else OwnerOwn.
+func (c *Client) Owner() string {
+	if c.cfg.Owner == OwnerDelegated {
+		return OwnerDelegated
+	}
+	return OwnerOwn
+}
 
 // --- Wire DTOs (match the chain's game_state JSON; see bot/go/chaindirect.go) ---
 
