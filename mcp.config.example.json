@@ -1,0 +1,17 @@
+{
+  "//": "Block52 poker MCP server. Copy this block into your MCP client's config:",
+  "//claude_desktop": "macOS: ~/Library/Application Support/Claude/claude_desktop_config.json  ·  Windows: %APPDATA%/Claude/claude_desktop_config.json",
+  "//claude_code": "claude mcp add-json block52-poker '<the object below>'  (or edit ~/.claude.json)",
+  "//absolute_path": "MCP clients require an ABSOLUTE path — replace /ABSOLUTE/PATH/TO with your clone location.",
+  "//prereq": "Start the core first: ./scripts/start-core.sh (it listens on CORE_ADDR).",
+
+  "mcpServers": {
+    "block52-poker": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/block52-mcp/adapter/dist/index.js"],
+      "env": {
+        "CORE_ADDR": "http://localhost:50051"
+      }
+    }
+  }
+}

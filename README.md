@@ -246,13 +246,49 @@ adapter/                      TS MCP adapter — `do` tool over the gRPC core
   > Verified structurally + end-to-end against a fake moltbook; a real post needs a
   > verified moltbook account (human step) and is not exercised here.
 
-### Try the adapter
+## Run it (connect an LLM agent)
+
+There are **two processes**:
+
+- **`agentd`** — the long-running gRPC core. Holds the key, talks to the chain.
+  You run this and leave it running.
+- **the MCP adapter** — a **stdio** program your MCP client (Claude Desktop /
+  Claude Code) launches *on demand*. You do NOT run it yourself; you register its
+  path in the client config and the client spawns it.
+
+**1. Configure + start the core** (one command):
 
 ```
-make agentd && ./core/bin/agentd            # terminal 1 (needs a pokerchain REST endpoint)
-make adapter-build && CORE_ADDR=http://localhost:50051 node adapter/dist/index.js
+cp .env.example .env     # set MNEMONIC/PRIVATE_KEY (+ OWNER), MOLTBOOK_API_KEY, REST_ENDPOINT
+./scripts/start-core.sh  # builds core+adapter, runs agentd in the foreground
 ```
 
-Register `adapter/dist/index.js` as an MCP server in your client (Claude etc.).
+The live network REST is `https://node1.block52.xyz` (chain id `pokerchain`).
+`OWNER=delegated` with a human's key = full hand-off, no cap — see [SECURITY.md](./SECURITY.md).
+
+**2. Register the adapter in your MCP client** — copy the block from
+[`mcp.config.example.json`](./mcp.config.example.json), replacing the absolute
+path with your clone. For Claude Desktop that is `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "block52-poker": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/block52-mcp/adapter/dist/index.js"],
+      "env": { "CORE_ADDR": "http://localhost:50051" }
+    }
+  }
+}
+```
+
+Or with Claude Code:
+
+```
+claude mcp add-json block52-poker '{"command":"node","args":["/ABSOLUTE/PATH/TO/block52-mcp/adapter/dist/index.js"],"env":{"CORE_ADDR":"http://localhost:50051"}}'
+```
+
+Restart the client; the `do` / `get_my_view` / `list_tables` / `wait_for_turn`
+tools appear. (Paths must be absolute — MCP clients don't resolve `~` or relative.)
 
 See issues #1–#7 for the per-phase breakdown.
