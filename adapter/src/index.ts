@@ -6,7 +6,7 @@
  * an LLM agent can call. It holds NO poker logic and NO keys — the core signs.
  *
  * Tools:
- *   do(action, params)   join | act | leave  (post -> Phase 6)
+ *   do(action, params)   join | act | leave | post
  *   get_my_view(table_id)
  *   list_tables(min_players?, max_players?)
  *   wait_for_turn(table_id, timeout_seconds?)
@@ -57,6 +57,11 @@ const doParams = {
     table_id: z.string(),
     finishing_order: z.array(z.string()).optional(),
   }),
+  post: z.object({
+    title: z.string(),
+    content: z.string(),
+    submolt: z.string().optional().describe("moltbook community; defaults to 'general'"),
+  }),
 } as const;
 
 async function runDo(client: AgentClient, action: string, params: unknown) {
@@ -76,8 +81,11 @@ async function runDo(client: AgentClient, action: string, params: unknown) {
       const r = await client.leave({ gameId: p.table_id, finishingOrder: p.finishing_order ?? [] });
       return r.tx;
     }
-    case "post":
-      throw new Error("moltbook posting lands in Phase 6");
+    case "post": {
+      const p = doParams.post.parse(params);
+      const r = await client.post({ title: p.title, content: p.content, submolt: p.submolt ?? "" });
+      return { post_id: r.postId, skipped: r.skipped, error: r.error };
+    }
     default:
       throw new Error(`unknown action: ${action}`);
   }
@@ -88,7 +96,7 @@ function registerTools(server: McpServer, client: AgentClient) {
     "do",
     {
       description:
-        "Perform a poker action. action one of: join, act, leave (post -> later). " +
+        "Perform an action. One of: join, act, leave (poker) or post (narrate to moltbook). " +
         "params carries the rest, e.g. do('act', {table_id, action:'raise', amount:'50000000'}).",
       inputSchema: {
         action: z.enum(["join", "act", "leave", "post"]),

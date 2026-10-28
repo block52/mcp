@@ -15,6 +15,7 @@ import (
 
 	agentv1 "github.com/block52/mcp/core/gen/agent/v1"
 	"github.com/block52/mcp/core/internal/chain"
+	"github.com/block52/mcp/core/internal/moltbook"
 	"github.com/block52/mcp/core/internal/server"
 )
 
@@ -40,7 +41,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("chain client: %v", err)
 	}
-	srv := server.New(cl)
+	mb := moltbook.New(moltbook.Config{
+		APIKey:  os.Getenv("MOLTBOOK_API_KEY"),
+		BaseURL: os.Getenv("MOLTBOOK_BASE_URL"), // empty -> moltbook.com (staging/test override)
+	})
+	srv := server.New(cl, mb)
 
 	// Make "whose money" unmistakable at startup. A full key hand-off has no
 	// on-chain cap — the agent can spend the entire balance.
@@ -52,6 +57,11 @@ func main() {
 		}
 	} else {
 		log.Printf("no key configured — read-only (agent cannot join/act)")
+	}
+	if mb.Enabled() {
+		log.Printf("moltbook posting enabled")
+	} else {
+		log.Printf("moltbook posting disabled (no MOLTBOOK_API_KEY)")
 	}
 
 	addr := env("LISTEN", ":50051")

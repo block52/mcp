@@ -25,6 +25,7 @@ const (
 	AgentService_Join_FullMethodName        = "/agent.v1.AgentService/Join"
 	AgentService_Act_FullMethodName         = "/agent.v1.AgentService/Act"
 	AgentService_Leave_FullMethodName       = "/agent.v1.AgentService/Leave"
+	AgentService_Post_FullMethodName        = "/agent.v1.AgentService/Post"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -48,6 +49,10 @@ type AgentServiceClient interface {
 	Join(ctx context.Context, in *JoinRequest, opts ...grpc.CallOption) (*JoinResponse, error)
 	Act(ctx context.Context, in *ActRequest, opts ...grpc.CallOption) (*ActResponse, error)
 	Leave(ctx context.Context, in *LeaveRequest, opts ...grpc.CallOption) (*LeaveResponse, error)
+	// Social — post the agent's own narration to moltbook (Phase 6). Best-effort
+	// and off the critical path: rate-limited (1 post / 30 min) with a skip, never
+	// blocking gameplay.
+	Post(ctx context.Context, in *PostRequest, opts ...grpc.CallOption) (*PostResponse, error)
 }
 
 type agentServiceClient struct {
@@ -118,6 +123,16 @@ func (c *agentServiceClient) Leave(ctx context.Context, in *LeaveRequest, opts .
 	return out, nil
 }
 
+func (c *agentServiceClient) Post(ctx context.Context, in *PostRequest, opts ...grpc.CallOption) (*PostResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PostResponse)
+	err := c.cc.Invoke(ctx, AgentService_Post_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -139,6 +154,10 @@ type AgentServiceServer interface {
 	Join(context.Context, *JoinRequest) (*JoinResponse, error)
 	Act(context.Context, *ActRequest) (*ActResponse, error)
 	Leave(context.Context, *LeaveRequest) (*LeaveResponse, error)
+	// Social — post the agent's own narration to moltbook (Phase 6). Best-effort
+	// and off the critical path: rate-limited (1 post / 30 min) with a skip, never
+	// blocking gameplay.
+	Post(context.Context, *PostRequest) (*PostResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -166,6 +185,9 @@ func (UnimplementedAgentServiceServer) Act(context.Context, *ActRequest) (*ActRe
 }
 func (UnimplementedAgentServiceServer) Leave(context.Context, *LeaveRequest) (*LeaveResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Leave not implemented")
+}
+func (UnimplementedAgentServiceServer) Post(context.Context, *PostRequest) (*PostResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Post not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -296,6 +318,24 @@ func _AgentService_Leave_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_Post_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PostRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).Post(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_Post_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).Post(ctx, req.(*PostRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -326,6 +366,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Leave",
 			Handler:    _AgentService_Leave_Handler,
+		},
+		{
+			MethodName: "Post",
+			Handler:    _AgentService_Post_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -140,11 +140,16 @@ Agents narrate their games. API (from `moltbook.com/skill.md`):
   Human owner verifies via **email + X/Twitter**. *Save the api_key.*
 - `POST /api/v1/posts` `{submolt_name, title, content}` — auth `Bearer <api_key>`.
   May trigger a math challenge.
-- `POST /api/v1/posts/{id}/comments` `{content, parent_id?}`.
+- `POST /api/v1/posts/{id}/comments` `{content, parent_id?}` (comments deferred).
 - **Rate limits:** 1 post / 30 min, 1 comment / 20 s, 50 comments/day; stricter in
   first 24 h.
 
-Best-effort flavour, off the critical path. Exposed via `do("post", {...})`.
+Best-effort flavour, off the critical path. Exposed via `do("post", {...})`. On the
+1-post/30-min limit the core **skips** (returns `skipped:true`) rather than queuing
+or blocking — the agent is told and moves on. Registration needs a human (email + X);
+`core/cmd/moltbook-register` does the machine step and prints what the human finishes.
+The api_key lives only in the core's env and is never logged. Comment support is a
+post-first follow-on.
 
 ---
 
@@ -173,7 +178,7 @@ Best-effort flavour, off the critical path. Exposed via `do("post", {...})`.
 - Session key + spend cap; core refuses over-cap actions.
 
 **Phase 6 — Moltbook**
-- Register flow, `do("post")`, rate-limit-aware queue.
+- Register helper, `do("post")`, rate-limit **skip** gate (not a queue).
 
 ---
 
@@ -184,8 +189,10 @@ proto/agent/v1/agent.proto   AgentService definition (source of truth)
 buf.yaml / buf.gen.yaml       codegen: Go stubs -> core/gen, TS stubs -> adapter/src/gen
 core/                         Go gRPC core (agentd) — signs Cosmos protos directly
   cmd/agentd/main.go          entrypoint (registers AgentService + reflection)
-  internal/chain/client.go    REST reads (done) + signed Msg broadcast (Phase 2)
-  internal/server/server.go   AgentService handlers (reads done)
+  cmd/moltbook-register/      one-time moltbook agent registration helper
+  internal/chain/client.go    REST reads + signed Msg broadcast + key ownership
+  internal/moltbook/client.go moltbook post client (rate-limit skip, challenge)
+  internal/server/server.go   AgentService handlers
   gen/agent/v1/               committed Go stubs (regenerate: `make gen`)
 adapter/                      TS MCP adapter — `do` tool over the gRPC core
   src/index.ts                MCP server (stdio): registers the 4 tools
@@ -217,7 +224,7 @@ adapter/                      TS MCP adapter — `do` tool over the gRPC core
   > live chain** — first on-chain broadcast is the Phase 2 acceptance step and needs a
   > funded b52 key + a running pokerchain.
 - **Phase 3** ✅ MCP adapter. TS stdio MCP server (`adapter/`) exposing `do`
-  (join/act/leave; post → Phase 6), `get_my_view`, `list_tables`, `wait_for_turn`,
+  (join/act/leave/post), `get_my_view`, `list_tables`, `wait_for_turn`,
   each wired to the gRPC core via a connect-es PromiseClient. Verified end to end:
   an MCP `tools/call` for `list_tables` flows adapter → gRPC `agentd` → chain REST
   and returns structured tables. protobuf-es / connect-es pinned to **v1** (matches
@@ -230,7 +237,14 @@ adapter/                      TS MCP adapter — `do` tool over the gRPC core
 - **Phase 5** ✅ delegation = **full key hand-off**. `OWNER=own|delegated` surfaces whose
   money is in play (startup log + `get_my_view.ownership`); no cap by design. See
   [SECURITY.md](./SECURITY.md).
-- **Phase 6** ⬜ moltbook.
+- **Phase 6** ✅ moltbook (post). `do("post", {title, content})` → gRPC `Post` →
+  moltbook client: Bearer auth, **1-post/30-min skip gate** (never blocks gameplay —
+  returns `skipped:true`), math-challenge solve-and-retry, api_key never logged.
+  One-time human onboarding via `go run ./core/cmd/moltbook-register` (prints the
+  claim URL; a person completes email + X verification — moltbook requires a
+  verified owner). Comments are a deferred follow-on (post-first).
+  > Verified structurally + end-to-end against a fake moltbook; a real post needs a
+  > verified moltbook account (human step) and is not exercised here.
 
 ### Try the adapter
 

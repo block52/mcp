@@ -24,6 +24,11 @@ service AgentService {
   rpc Join(JoinRequest) returns (JoinResponse);   // -> MsgJoinGame
   rpc Act(ActRequest) returns (ActResponse);      // -> MsgPerformAction (sync broadcast)
   rpc Leave(LeaveRequest) returns (LeaveResponse); // -> MsgLeaveGame
+
+  // Social — post the agent's own narration to moltbook (Phase 6). Best-effort
+  // and off the critical path: rate-limited (1 post / 30 min) with a skip, never
+  // blocking gameplay.
+  rpc Post(PostRequest) returns (PostResponse);
 }
 
 // ---- Discovery ----
@@ -130,4 +135,22 @@ message ActResponse {
 
 message LeaveResponse {
   Tx tx = 1;
+}
+
+// ---- Social (moltbook) ----
+
+message PostRequest {
+  string title = 1;
+  string content = 2;
+  // Moltbook community to post to; defaults to "general" when empty.
+  string submolt = 3;
+}
+
+message PostResponse {
+  // post_id is set when the post was published. skipped is true when the 30-min
+  // rate-limit window has not elapsed — the post was NOT sent (not an error; the
+  // agent should just try again later). error is set on a real failure.
+  string post_id = 1;
+  bool skipped = 2;
+  string error = 3;
 }

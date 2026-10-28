@@ -13,15 +13,19 @@ import (
 
 	agentv1 "github.com/block52/mcp/core/gen/agent/v1"
 	"github.com/block52/mcp/core/internal/chain"
+	"github.com/block52/mcp/core/internal/moltbook"
 )
 
 // Server implements agentv1.AgentServiceServer.
 type Server struct {
 	agentv1.UnimplementedAgentServiceServer
-	chain *chain.Client
+	chain    *chain.Client
+	moltbook *moltbook.Client
 }
 
-func New(c *chain.Client) *Server { return &Server{chain: c} }
+func New(c *chain.Client, mb *moltbook.Client) *Server {
+	return &Server{chain: c, moltbook: mb}
+}
 
 // ListTables returns joinable tables, optionally filtered by seat capacity.
 func (s *Server) ListTables(ctx context.Context, req *agentv1.ListTablesRequest) (*agentv1.ListTablesResponse, error) {
@@ -157,6 +161,21 @@ func (s *Server) Leave(ctx context.Context, req *agentv1.LeaveRequest) (*agentv1
 	}
 	hash, err := s.chain.LeaveGame(ctx, req.GameId, req.FinishingOrder)
 	return &agentv1.LeaveResponse{Tx: txResult(hash, err)}, grpcErr(err)
+}
+
+// Post publishes the agent's narration to moltbook (best-effort, rate-limited).
+func (s *Server) Post(ctx context.Context, req *agentv1.PostRequest) (*agentv1.PostResponse, error) {
+	if req.Title == "" || req.Content == "" {
+		return nil, status.Error(codes.InvalidArgument, "title and content are required")
+	}
+	if s.moltbook == nil || !s.moltbook.Enabled() {
+		return nil, status.Error(codes.FailedPrecondition, "moltbook not configured (set MOLTBOOK_API_KEY)")
+	}
+	res, err := s.moltbook.Post(ctx, req.Title, req.Content, req.Submolt)
+	if err != nil {
+		return &agentv1.PostResponse{Error: err.Error()}, status.Errorf(codes.Unavailable, "%v", err)
+	}
+	return &agentv1.PostResponse{PostId: res.PostID, Skipped: res.Skipped}, nil
 }
 
 // txResult builds the Tx payload; on error it carries the message so callers

@@ -930,6 +930,130 @@ func (x *LeaveResponse) GetTx() *Tx {
 	return nil
 }
 
+type PostRequest struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Title   string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
+	Content string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	// Moltbook community to post to; defaults to "general" when empty.
+	Submolt       string `protobuf:"bytes,3,opt,name=submolt,proto3" json:"submolt,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PostRequest) Reset() {
+	*x = PostRequest{}
+	mi := &file_agent_v1_agent_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PostRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PostRequest) ProtoMessage() {}
+
+func (x *PostRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_v1_agent_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PostRequest.ProtoReflect.Descriptor instead.
+func (*PostRequest) Descriptor() ([]byte, []int) {
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *PostRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *PostRequest) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *PostRequest) GetSubmolt() string {
+	if x != nil {
+		return x.Submolt
+	}
+	return ""
+}
+
+type PostResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// post_id is set when the post was published. skipped is true when the 30-min
+	// rate-limit window has not elapsed — the post was NOT sent (not an error; the
+	// agent should just try again later). error is set on a real failure.
+	PostId        string `protobuf:"bytes,1,opt,name=post_id,json=postId,proto3" json:"post_id,omitempty"`
+	Skipped       bool   `protobuf:"varint,2,opt,name=skipped,proto3" json:"skipped,omitempty"`
+	Error         string `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PostResponse) Reset() {
+	*x = PostResponse{}
+	mi := &file_agent_v1_agent_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PostResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PostResponse) ProtoMessage() {}
+
+func (x *PostResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_v1_agent_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PostResponse.ProtoReflect.Descriptor instead.
+func (*PostResponse) Descriptor() ([]byte, []int) {
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *PostResponse) GetPostId() string {
+	if x != nil {
+		return x.PostId
+	}
+	return ""
+}
+
+func (x *PostResponse) GetSkipped() bool {
+	if x != nil {
+		return x.Skipped
+	}
+	return false
+}
+
+func (x *PostResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_agent_v1_agent_proto protoreflect.FileDescriptor
 
 const file_agent_v1_agent_proto_rawDesc = "" +
@@ -998,11 +1122,19 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\vActResponse\x12\x1c\n" +
 	"\x02tx\x18\x01 \x01(\v2\f.agent.v1.TxR\x02tx\"-\n" +
 	"\rLeaveResponse\x12\x1c\n" +
-	"\x02tx\x18\x01 \x01(\v2\f.agent.v1.TxR\x02tx*R\n" +
+	"\x02tx\x18\x01 \x01(\v2\f.agent.v1.TxR\x02tx\"W\n" +
+	"\vPostRequest\x12\x14\n" +
+	"\x05title\x18\x01 \x01(\tR\x05title\x12\x18\n" +
+	"\acontent\x18\x02 \x01(\tR\acontent\x12\x18\n" +
+	"\asubmolt\x18\x03 \x01(\tR\asubmolt\"W\n" +
+	"\fPostResponse\x12\x17\n" +
+	"\apost_id\x18\x01 \x01(\tR\x06postId\x12\x18\n" +
+	"\askipped\x18\x02 \x01(\bR\askipped\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error*R\n" +
 	"\tOwnership\x12\x19\n" +
 	"\x15OWNERSHIP_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rOWNERSHIP_OWN\x10\x01\x12\x17\n" +
-	"\x13OWNERSHIP_DELEGATED\x10\x022\x8e\x03\n" +
+	"\x13OWNERSHIP_DELEGATED\x10\x022\xc5\x03\n" +
 	"\fAgentService\x12G\n" +
 	"\n" +
 	"ListTables\x12\x1b.agent.v1.ListTablesRequest\x1a\x1c.agent.v1.ListTablesResponse\x12D\n" +
@@ -1010,7 +1142,8 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\vWaitForTurn\x12\x1c.agent.v1.WaitForTurnRequest\x1a\x1d.agent.v1.WaitForTurnResponse\x125\n" +
 	"\x04Join\x12\x15.agent.v1.JoinRequest\x1a\x16.agent.v1.JoinResponse\x122\n" +
 	"\x03Act\x12\x14.agent.v1.ActRequest\x1a\x15.agent.v1.ActResponse\x128\n" +
-	"\x05Leave\x12\x16.agent.v1.LeaveRequest\x1a\x17.agent.v1.LeaveResponseB2Z0github.com/block52/mcp/core/gen/agent/v1;agentv1b\x06proto3"
+	"\x05Leave\x12\x16.agent.v1.LeaveRequest\x1a\x17.agent.v1.LeaveResponse\x125\n" +
+	"\x04Post\x12\x15.agent.v1.PostRequest\x1a\x16.agent.v1.PostResponseB2Z0github.com/block52/mcp/core/gen/agent/v1;agentv1b\x06proto3"
 
 var (
 	file_agent_v1_agent_proto_rawDescOnce sync.Once
@@ -1025,7 +1158,7 @@ func file_agent_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_agent_v1_agent_proto_goTypes = []any{
 	(Ownership)(0),              // 0: agent.v1.Ownership
 	(*ListTablesRequest)(nil),   // 1: agent.v1.ListTablesRequest
@@ -1043,6 +1176,8 @@ var file_agent_v1_agent_proto_goTypes = []any{
 	(*JoinResponse)(nil),        // 13: agent.v1.JoinResponse
 	(*ActResponse)(nil),         // 14: agent.v1.ActResponse
 	(*LeaveResponse)(nil),       // 15: agent.v1.LeaveResponse
+	(*PostRequest)(nil),         // 16: agent.v1.PostRequest
+	(*PostResponse)(nil),        // 17: agent.v1.PostResponse
 }
 var file_agent_v1_agent_proto_depIdxs = []int32{
 	2,  // 0: agent.v1.ListTablesResponse.tables:type_name -> agent.v1.Table
@@ -1058,14 +1193,16 @@ var file_agent_v1_agent_proto_depIdxs = []int32{
 	9,  // 10: agent.v1.AgentService.Join:input_type -> agent.v1.JoinRequest
 	10, // 11: agent.v1.AgentService.Act:input_type -> agent.v1.ActRequest
 	11, // 12: agent.v1.AgentService.Leave:input_type -> agent.v1.LeaveRequest
-	3,  // 13: agent.v1.AgentService.ListTables:output_type -> agent.v1.ListTablesResponse
-	6,  // 14: agent.v1.AgentService.GetMyView:output_type -> agent.v1.GetMyViewResponse
-	8,  // 15: agent.v1.AgentService.WaitForTurn:output_type -> agent.v1.WaitForTurnResponse
-	13, // 16: agent.v1.AgentService.Join:output_type -> agent.v1.JoinResponse
-	14, // 17: agent.v1.AgentService.Act:output_type -> agent.v1.ActResponse
-	15, // 18: agent.v1.AgentService.Leave:output_type -> agent.v1.LeaveResponse
-	13, // [13:19] is the sub-list for method output_type
-	7,  // [7:13] is the sub-list for method input_type
+	16, // 13: agent.v1.AgentService.Post:input_type -> agent.v1.PostRequest
+	3,  // 14: agent.v1.AgentService.ListTables:output_type -> agent.v1.ListTablesResponse
+	6,  // 15: agent.v1.AgentService.GetMyView:output_type -> agent.v1.GetMyViewResponse
+	8,  // 16: agent.v1.AgentService.WaitForTurn:output_type -> agent.v1.WaitForTurnResponse
+	13, // 17: agent.v1.AgentService.Join:output_type -> agent.v1.JoinResponse
+	14, // 18: agent.v1.AgentService.Act:output_type -> agent.v1.ActResponse
+	15, // 19: agent.v1.AgentService.Leave:output_type -> agent.v1.LeaveResponse
+	17, // 20: agent.v1.AgentService.Post:output_type -> agent.v1.PostResponse
+	14, // [14:21] is the sub-list for method output_type
+	7,  // [7:14] is the sub-list for method input_type
 	7,  // [7:7] is the sub-list for extension type_name
 	7,  // [7:7] is the sub-list for extension extendee
 	0,  // [0:7] is the sub-list for field type_name
@@ -1085,7 +1222,7 @@ func file_agent_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_v1_agent_proto_rawDesc), len(file_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   15,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

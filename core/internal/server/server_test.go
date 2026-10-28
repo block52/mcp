@@ -9,6 +9,7 @@ import (
 
 	agentv1 "github.com/block52/mcp/core/gen/agent/v1"
 	"github.com/block52/mcp/core/internal/chain"
+	"github.com/block52/mcp/core/internal/moltbook"
 )
 
 // fakeChain serves the same doubly-encoded shapes the real pokerchain does, so
@@ -55,7 +56,7 @@ func newServer(t *testing.T, rest string) *Server {
 	if err != nil {
 		t.Fatalf("chain.New: %v", err)
 	}
-	return New(cl)
+	return New(cl, moltbook.New(moltbook.Config{}))
 }
 
 func TestListTables(t *testing.T) {
@@ -119,7 +120,7 @@ func TestGetMyViewReportsDelegatedOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatalf("chain.New: %v", err)
 	}
-	s := New(cl)
+	s := New(cl, moltbook.New(moltbook.Config{}))
 	resp, err := s.GetMyView(context.Background(), &agentv1.GetMyViewRequest{GameId: "b52table1"})
 	if err != nil {
 		t.Fatalf("GetMyView: %v", err)
