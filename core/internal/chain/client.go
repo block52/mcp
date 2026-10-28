@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -39,26 +40,48 @@ type Config struct {
 }
 
 // Client is the chain-facing surface the gRPC server depends on.
-// Reads are implemented (Phase 1). Writes are stubbed (Phase 2).
+// Reads (Phase 1) + signed writes (Phase 2) are implemented.
 type Client struct {
-	cfg  Config
-	http *http.Client
-	addr string // derived b52... address
+	cfg    Config
+	http   *http.Client
+	wallet *wallet // nil when no key configured (read-only mode)
 }
 
-// New constructs a Client and derives the agent's address from its key.
+// New constructs a Client. If a mnemonic or private key is configured it derives
+// the agent's b52 signing identity ("own money"); otherwise the client is
+// read-only and the write methods return an error.
 func New(cfg Config) (*Client, error) {
 	c := &Client{
 		cfg:  cfg,
 		http: &http.Client{Timeout: 10 * time.Second},
 	}
-	// TODO(phase2): derive address via bech32 "b52" prefix (see bot/go/derive_addr.go).
-	// Until then Address() is empty; GetMyView accepts an explicit address.
+	switch {
+	case cfg.Mnemonic != "":
+		w, err := walletFromMnemonic(cfg.Mnemonic)
+		if err != nil {
+			return nil, fmt.Errorf("mnemonic: %w", err)
+		}
+		c.wallet = w
+	case cfg.PrivateKeyHex != "":
+		w, err := walletFromPrivateKeyHex(cfg.PrivateKeyHex)
+		if err != nil {
+			return nil, fmt.Errorf("private key: %w", err)
+		}
+		c.wallet = w
+	}
 	return c, nil
 }
 
-// Address returns the agent's b52 address (empty until Phase 2 key derivation).
-func (c *Client) Address() string { return c.addr }
+// Address returns the agent's b52 address, or "" if no key is configured.
+func (c *Client) Address() string {
+	if c.wallet == nil {
+		return ""
+	}
+	return c.wallet.address()
+}
+
+// HasKey reports whether the client can sign (a key was configured).
+func (c *Client) HasKey() bool { return c.wallet != nil }
 
 // --- Wire DTOs (match the chain's game_state JSON; see bot/go/chaindirect.go) ---
 
@@ -208,18 +231,54 @@ func (gs *GameState) IsTurn(addr string) bool {
 
 // --- Writes (Phase 2): build + sign + broadcast Cosmos Msgs ---
 
+// errNoKey is returned by the write methods when the client has no signing key.
+var errNoKey = fmt.Errorf("no signing key configured (read-only client)")
+
+// parseMicro parses a micro-USDC string amount into uint64. Empty = 0.
+func parseMicro(amount string) (uint64, error) {
+	if amount == "" {
+		return 0, nil
+	}
+	v, err := strconv.ParseUint(amount, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("amount %q: %w", amount, err)
+	}
+	return v, nil
+}
+
 // PerformAction signs MsgPerformAction and broadcasts in SYNC mode (sub-second),
 // mirroring the SDK's performActionSync. data carries Omaha card selectors.
 func (c *Client) PerformAction(ctx context.Context, gameID, action, amount, data string) (string, error) {
-	panic("TODO(phase2): build+sign MsgPerformAction, broadcast sync")
+	if c.wallet == nil {
+		return "", errNoKey
+	}
+	amt, err := parseMicro(amount)
+	if err != nil {
+		return "", err
+	}
+	msg := encodeMsgPerformAction(c.wallet.address(), gameID, action, amt, data)
+	return c.signAndBroadcast(ctx, c.wallet, "/pokerchain.poker.v1.MsgPerformAction", msg, "act via block52-mcp")
 }
 
 // JoinGame signs MsgJoinGame.
 func (c *Client) JoinGame(ctx context.Context, gameID string, seat uint32, buyIn string) (string, error) {
-	panic("TODO(phase2): build+sign MsgJoinGame")
+	if c.wallet == nil {
+		return "", errNoKey
+	}
+	amt, err := parseMicro(buyIn)
+	if err != nil {
+		return "", err
+	}
+	msg := encodeMsgJoinGame(c.wallet.address(), gameID, uint64(seat), amt)
+	return c.signAndBroadcast(ctx, c.wallet, "/pokerchain.poker.v1.MsgJoinGame", msg, "join via block52-mcp")
 }
 
-// LeaveGame signs MsgLeaveGame.
+// LeaveGame signs MsgLeaveGame. finishingOrder is SNG-only and currently unused
+// for the cash-game subset (matches the bot's cash-game LeaveGame).
 func (c *Client) LeaveGame(ctx context.Context, gameID string, finishingOrder []string) (string, error) {
-	panic("TODO(phase2): build+sign MsgLeaveGame")
+	if c.wallet == nil {
+		return "", errNoKey
+	}
+	msg := encodeMsgLeaveGame(c.wallet.address(), gameID)
+	return c.signAndBroadcast(ctx, c.wallet, "/pokerchain.poker.v1.MsgLeaveGame", msg, "leave via block52-mcp")
 }

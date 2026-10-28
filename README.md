@@ -205,7 +205,18 @@ adapter/                      TS MCP adapter — `do` tool over the gRPC core
   `games` / `game_state`, and `nextToAct` is a **seat number** (not an address or
   index). `agentd` builds, serves gRPC with reflection, and `go test ./...` is green.
   `WaitForTurn` polls (1s) for now; a WS-relay subscription can replace the poll later.
-- **Phase 2** ⬜ write path + own-money key derivation (unblocks `GetMyView` legal
-  actions / `my_turn`, which need the agent's address).
+- **Phase 2** ✅ write path + own-money keys. `chain/sign.go` is a Go-native port of
+  `bot/go/cosmos.go`: BIP39 → `m/44'/118'/0'/0/0` → secp256k1 → bech32 `b52` key
+  derivation, hand-encoded Cosmos tx envelope (SIGN_MODE_DIRECT, gasless), SYNC
+  broadcast. `Join`/`Act`/`Leave` handlers sign `MsgJoinGame`/`MsgPerformAction`/
+  `MsgLeaveGame`. Deriving a key also fills in `GetMyView`'s legal actions / `my_turn`
+  and enables `WaitForTurn`. A missing key = read-only client (writes error clearly).
+  Tests decode the hand-rolled wire bytes with the canonical protobuf decoder (tag
+  correctness), assert proto3 zero-omission, and verify deterministic address
+  derivation.
+  > Signing is validated structurally (wire format + derivation), **not yet against a
+  > live chain** — first on-chain broadcast is the Phase 2 acceptance step and needs a
+  > funded b52 key + a running pokerchain.
+- **Phase 3** ⬜ MCP adapter: wire the `do` tool to these RPCs.
 
 See issues #1–#7 for the per-phase breakdown.

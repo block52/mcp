@@ -124,6 +124,57 @@ func (s *Server) WaitForTurn(ctx context.Context, req *agentv1.WaitForTurnReques
 	}
 }
 
+// Join seats the agent at a table with a buy-in. -> MsgJoinGame.
+func (s *Server) Join(ctx context.Context, req *agentv1.JoinRequest) (*agentv1.JoinResponse, error) {
+	if req.GameId == "" {
+		return nil, status.Error(codes.InvalidArgument, "game_id is required")
+	}
+	hash, err := s.chain.JoinGame(ctx, req.GameId, req.Seat, req.BuyIn)
+	return &agentv1.JoinResponse{Tx: txResult(hash, err)}, grpcErr(err)
+}
+
+// Act performs a poker action (sync broadcast). -> MsgPerformAction.
+func (s *Server) Act(ctx context.Context, req *agentv1.ActRequest) (*agentv1.ActResponse, error) {
+	if req.GameId == "" || req.Action == "" {
+		return nil, status.Error(codes.InvalidArgument, "game_id and action are required")
+	}
+	amount, data := "", ""
+	if req.Amount != nil {
+		amount = *req.Amount
+	}
+	if req.Data != nil {
+		data = *req.Data
+	}
+	hash, err := s.chain.PerformAction(ctx, req.GameId, req.Action, amount, data)
+	return &agentv1.ActResponse{Tx: txResult(hash, err)}, grpcErr(err)
+}
+
+// Leave removes the agent from a table. -> MsgLeaveGame.
+func (s *Server) Leave(ctx context.Context, req *agentv1.LeaveRequest) (*agentv1.LeaveResponse, error) {
+	if req.GameId == "" {
+		return nil, status.Error(codes.InvalidArgument, "game_id is required")
+	}
+	hash, err := s.chain.LeaveGame(ctx, req.GameId, req.FinishingOrder)
+	return &agentv1.LeaveResponse{Tx: txResult(hash, err)}, grpcErr(err)
+}
+
+// txResult builds the Tx payload; on error it carries the message so callers
+// that ignore the gRPC status still see why it failed.
+func txResult(hash string, err error) *agentv1.Tx {
+	if err != nil {
+		return &agentv1.Tx{Success: false, Error: err.Error()}
+	}
+	return &agentv1.Tx{Success: true, TxHash: hash}
+}
+
+// grpcErr maps a chain write error to a gRPC status (nil on success).
+func grpcErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	return status.Errorf(codes.Unavailable, "%v", err)
+}
+
 func toProtoLegal(in []chain.LegalAction) []*agentv1.LegalAction {
 	out := make([]*agentv1.LegalAction, 0, len(in))
 	for _, a := range in {
