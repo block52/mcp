@@ -7,10 +7,11 @@ plugins:
   - remote: buf.build/grpc/go
     out: core/gen
     opt: paths=source_relative
-  # TS adapter stubs (connect-es / grpc-web client)
-  - remote: buf.build/bufbuild/es
+  # TS adapter stubs. Pinned to protobuf-es v1 / connect-es v1 to match the
+  # v1 runtime deps and the v1 PromiseClient API the adapter uses.
+  - remote: buf.build/bufbuild/es:v1.10.0
     out: adapter/src/gen
     opt: target=ts
-  - remote: buf.build/connectrpc/es
+  - remote: buf.build/connectrpc/es:v1.6.1
     out: adapter/src/gen
     opt: target=ts

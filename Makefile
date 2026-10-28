@@ -17,5 +17,6 @@ core-test:
 agentd:
 	cd core && go build -o bin/agentd ./cmd/agentd
 
-adapter-build:
+# TS stubs are regenerated (not committed), so generate before building.
+adapter-build: gen
 	cd adapter && npm install && npm run build

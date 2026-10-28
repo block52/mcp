@@ -191,7 +191,9 @@ core/                         Go gRPC core (agentd) — signs Cosmos protos dire
   internal/server/server.go   AgentService handlers (reads done)
   gen/agent/v1/               committed Go stubs (regenerate: `make gen`)
 adapter/                      TS MCP adapter — `do` tool over the gRPC core
-  src/index.ts                MCP server (stdio)
+  src/index.ts                MCP server (stdio): registers the 4 tools
+  src/client.ts               connect-es PromiseClient for the gRPC core
+  src/gen/                     TS stubs — regenerated (not committed): `make gen`
 ```
 
 `make gen` (needs [buf](https://buf.build)) regenerates stubs; `make core-build`,
@@ -217,6 +219,23 @@ adapter/                      TS MCP adapter — `do` tool over the gRPC core
   > Signing is validated structurally (wire format + derivation), **not yet against a
   > live chain** — first on-chain broadcast is the Phase 2 acceptance step and needs a
   > funded b52 key + a running pokerchain.
-- **Phase 3** ⬜ MCP adapter: wire the `do` tool to these RPCs.
+- **Phase 3** ✅ MCP adapter. TS stdio MCP server (`adapter/`) exposing `do`
+  (join/act/leave; post → Phase 6), `get_my_view`, `list_tables`, `wait_for_turn`,
+  each wired to the gRPC core via a connect-es PromiseClient. Verified end to end:
+  an MCP `tools/call` for `list_tables` flows adapter → gRPC `agentd` → chain REST
+  and returns structured tables. protobuf-es / connect-es pinned to **v1** (matches
+  the runtime + PromiseClient API); regenerate TS stubs with `make gen`.
+  > The live-chain caveat from Phase 2 stands: `do('act'|'join')` plumbing is proven,
+  > but a real signed broadcast still needs a funded b52 key + running pokerchain.
+- **Phase 4** ⬜ spectator UI. **Phase 5** ⬜ delegation. **Phase 6** ⬜ moltbook.
+
+### Try the adapter
+
+```
+make agentd && ./core/bin/agentd            # terminal 1 (needs a pokerchain REST endpoint)
+make adapter-build && CORE_ADDR=http://localhost:50051 node adapter/dist/index.js
+```
+
+Register `adapter/dist/index.js` as an MCP server in your client (Claude etc.).
 
 See issues #1–#7 for the per-phase breakdown.
